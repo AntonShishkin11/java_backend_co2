@@ -12,7 +12,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
-@Profile("csv")
+@Profile({"csv","jdbc"})
 public class CsvEmissionRepository implements EmissionRepository {
 
     private final Map<Long, Emission> storage = new HashMap<>();
