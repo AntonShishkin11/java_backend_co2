@@ -28,11 +28,15 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .headers(h -> h.frameOptions(f -> f.disable()))
+                .headers(h -> h.frameOptions(f -> f.disable())) // чтобы H2 console работала
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(toH2Console()).permitAll()
 
+                        // если у тебя есть /api/admin/** - только ADMIN
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // API защиты
                         .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/**").hasRole("ADMIN")
@@ -47,8 +51,8 @@ public class SecurityConfig {
     }
 
     /**
-     * In-memory пользователи только для csv/jdbc профилей (Л6).
-     * В jpa профиле будет JpaUserDetailsService (Л7).
+     * In-memory users для csv/jdbc профилей.
+     * В jpa профиле пользователей отдаст JpaUserDetailsService.
      */
     @Bean
     @Profile({"csv","jdbc"})
