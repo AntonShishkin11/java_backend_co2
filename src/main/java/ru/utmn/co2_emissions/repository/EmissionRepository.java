@@ -6,14 +6,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface EmissionRepository {
-
     List<Emission> findAll();
-
     Optional<Emission> findById(Long id);
-
     Emission save(Emission emission);
-
     Emission update(Long id, Emission emission);
-
     void delete(Long id);
 }

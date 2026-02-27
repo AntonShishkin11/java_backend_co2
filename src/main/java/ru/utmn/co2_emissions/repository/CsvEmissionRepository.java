@@ -1,46 +1,94 @@
 package ru.utmn.co2_emissions.repository;
 
 import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvValidationException;
 import jakarta.annotation.PostConstruct;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Repository;
 import ru.utmn.co2_emissions.model.Emission;
-import ru.utmn.co2_emissions.repository.EmissionRepository;
 
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
-@Profile({"csv","jdbc"})
+@Profile("csv")
 public class CsvEmissionRepository implements EmissionRepository {
 
-    private final Map<Long, Emission> storage = new HashMap<>();
-    private final AtomicLong idGenerator = new AtomicLong(1);
+    private static final String CSV_PATH = "data/co2.csv";
+
+    private final Map<Long, Emission> storage = new LinkedHashMap<>();
+    private final AtomicLong seq = new AtomicLong(0);
 
     @PostConstruct
-    public void load() {
-        try (CSVReader reader = new CSVReader(
-                new InputStreamReader(
-                        getClass().getResourceAsStream("/data/co2.csv")))) {
+    public void init() {
+        loadFromCsv();
+    }
 
-            List<String[]> rows = reader.readAll();
-            rows.remove(0);
+    private void loadFromCsv() {
+        ClassPathResource resource = new ClassPathResource(CSV_PATH);
 
-            for (String[] row : rows) {
+        try (CSVReader reader = new CSVReader(new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+            String[] header = reader.readNext(); // пропускаем заголовок
+            if (header == null) return;
+
+            String[] row;
+            while ((row = reader.readNext()) != null) {
+                // Формат CSV: Country,Region,Date,Kilotons of Co2,Metric Tons Per Capita
+                // Пример: Afghanistan,Asia,01-01-2011,8930,0.31
                 Emission e = new Emission();
-                e.setId(idGenerator.getAndIncrement());
-                e.setCountry(row[0]);
-                e.setRegion(row[1]);
-                e.setYear(Integer.parseInt(row[2].substring(6)));
-                e.setKilotons(Double.parseDouble(row[3]));
-                e.setMetricTonsPerCapita(Double.parseDouble(row[4]));
+                e.setCountry(safeStr(row, 0));
+                e.setRegion(safeStr(row, 1));
+                e.setYear(parseYear(safeStr(row, 2)));
+                e.setKilotons(parseDoubleOrNull(safeStr(row, 3)));
+                e.setMetricTonsPerCapita(parseDoubleOrNull(safeStr(row, 4)));
 
-                storage.put(e.getId(), e);
+                save(e);
             }
+        } catch (IOException | CsvValidationException ex) {
+            throw new IllegalStateException("Не удалось прочитать CSV из classpath:" + CSV_PATH, ex);
+        }
+    }
 
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+    private static String safeStr(String[] row, int idx) {
+        if (row == null || idx < 0 || idx >= row.length) return null;
+        String v = row[idx];
+        return v == null ? null : v.trim();
+    }
+
+    private static Integer parseYear(String date) {
+        if (date == null || date.isBlank()) return null;
+        // ожидаем что дата вида dd-MM-yyyy, но не доверяем людям
+        // берём последние 4 цифры
+        String digits = date.replaceAll("[^0-9]", "");
+        if (digits.length() >= 4) {
+            String yearStr = digits.substring(digits.length() - 4);
+            try {
+                return Integer.parseInt(yearStr);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        // fallback: пробуем split
+        String[] parts = date.split("[-./]");
+        if (parts.length > 0) {
+            String last = parts[parts.length - 1];
+            try {
+                return Integer.parseInt(last);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static Double parseDoubleOrNull(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return Double.parseDouble(s.replace(",", "."));
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -56,13 +104,17 @@ public class CsvEmissionRepository implements EmissionRepository {
 
     @Override
     public Emission save(Emission emission) {
-        emission.setId(idGenerator.getAndIncrement());
-        storage.put(emission.getId(), emission);
+        long id = seq.incrementAndGet();
+        emission.setId(id);
+        storage.put(id, emission);
         return emission;
     }
 
     @Override
     public Emission update(Long id, Emission emission) {
+        if (!storage.containsKey(id)) {
+            throw new ru.utmn.co2_emissions.exception.NotFoundException("Emission not found: " + id);
+        }
         emission.setId(id);
         storage.put(id, emission);
         return emission;

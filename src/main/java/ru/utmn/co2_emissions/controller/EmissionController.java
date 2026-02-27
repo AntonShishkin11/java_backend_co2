@@ -3,7 +3,7 @@ package ru.utmn.co2_emissions.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import ru.utmn.co2_emissions.model.Emission;
-import ru.utmn.co2_emissions.service.EmissionService;
+import ru.utmn.co2_emissions.service.EmissionServiceInterface;
 
 import java.util.List;
 
@@ -12,7 +12,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EmissionController {
 
-    private final EmissionService service;
+    private final EmissionServiceInterface service;
 
     @GetMapping
     public List<Emission> getAll() {
@@ -30,8 +30,7 @@ public class EmissionController {
     }
 
     @PutMapping("/{id}")
-    public Emission update(@PathVariable Long id,
-                           @RequestBody Emission emission) {
+    public Emission update(@PathVariable Long id, @RequestBody Emission emission) {
         return service.update(id, emission);
     }
 

@@ -2,32 +2,67 @@ package ru.utmn.co2_emissions.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+
+import static org.springframework.boot.autoconfigure.security.servlet.PathRequest.toH2Console;
 
 @Configuration
 public class SecurityConfig {
 
     @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // H2-console работает во фрейме, плюс POST на /h2-console требует CSRF
                 .csrf(csrf -> csrf.disable())
-                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
-
+                .headers(h -> h.frameOptions(f -> f.disable()))
                 .authorizeHttpRequests(auth -> auth
-                        // открываем Swagger и api-docs
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        // открываем H2 console
-                        .requestMatchers("/h2-console/**").permitAll()
-                        // остальное требует логин
+                        .requestMatchers(toH2Console()).permitAll()
+
+                        .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")
+
                         .anyRequest().authenticated()
                 )
-                // чтобы можно было логиниться и через форму, и через basic
                 .httpBasic(Customizer.withDefaults())
                 .formLogin(Customizer.withDefaults());
 
         return http.build();
+    }
+
+    /**
+     * In-memory пользователи только для csv/jdbc профилей (Л6).
+     * В jpa профиле будет JpaUserDetailsService (Л7).
+     */
+    @Bean
+    @Profile({"csv","jdbc"})
+    public UserDetailsService inMemoryUsers(PasswordEncoder encoder) {
+        UserDetails admin = User.withUsername("admin")
+                .password(encoder.encode("admin"))
+                .roles("ADMIN")
+                .build();
+
+        UserDetails user = User.withUsername("user")
+                .password(encoder.encode("user"))
+                .roles("USER")
+                .build();
+
+        return new InMemoryUserDetailsManager(admin, user);
     }
 }
